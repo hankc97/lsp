@@ -18,7 +18,7 @@ func TestParseRequest(t *testing.T) {
 			input: "Content-Length: 23\r\n" +
 				"Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n" +
 				"\r\n" +
-				`{"hello": "world"}`,
+				`{"Name": "ED"}`,
 			want: &lspRequest{
 				Header: &lspHeader{
 					ContentLength: 23,

@@ -4,7 +4,7 @@ import {Trace} from 'vscode-jsonrpc';
 import { window, workspace, commands, ExtensionContext, Uri } from 'vscode';
 import { LanguageClient, LanguageClientOptions, StreamInfo, Position as LSPosition, Location as LSLocation } from 'vscode-languageclient/node';
 
-export async function activate(context: ExtensionContext) {
+export function activate(context: ExtensionContext) {
     console.log("starting client...");
     // The server is a started as a separate app and listens on port 5007
     const connectionInfo = {
@@ -17,9 +17,7 @@ export async function activate(context: ExtensionContext) {
             writer: socket,
             reader: socket
         };
-        const r = await Promise.resolve(result);
-        console.log(r);
-        return r;
+        return Promise.resolve(result);
     };
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{
@@ -33,6 +31,7 @@ export async function activate(context: ExtensionContext) {
     
     // Create the language client and start the client.
     const lc = new LanguageClient('golang-tcpserver', serverOptions, clientOptions);
+    context.subscriptions.push(lc.start());
 
     // const disposable2 = commands.registerCommand("mydsl.a.proxy", async () => {
     //     const activeEditor = window.activeTextEditor;
@@ -52,5 +51,4 @@ export async function activate(context: ExtensionContext) {
     
     // Push the disposable lc.start() to the context's subscriptions so that the 
     // client can be deactivated on extension deactivation
-    context.subscriptions.push(lc.start());
 }
