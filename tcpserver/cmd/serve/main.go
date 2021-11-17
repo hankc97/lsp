@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	// "os"
-	// "io/ioutil"
 	"io"
 	"log"
 	"net"
@@ -14,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	// "bufio"
 	// "lsp/tcpserver"
 )
 
@@ -81,14 +78,12 @@ func handleClientConn(conn io.ReadWriteCloser) error {
 
 func serveReq(resp io.Writer, req *lspRequest) error {
 	// write to `resp` according to what `req` contains
+	fmt.Printf("%+v\n", req)
+
 	return nil
 }
 
 func parseRequest(in io.Reader) (_ *lspRequest, last bool, err error) {
-	p := make([]byte, 1 << 20)
-	o, _ := in.Read(p)
-	fmt.Println(string(o))
-
 	header, err := parseHeader(in)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "parsing header")
@@ -103,36 +98,14 @@ func parseRequest(in io.Reader) (_ *lspRequest, last bool, err error) {
 		return nil, false, errors.Errorf("unsupported content type: %q", header.ContentType)
 	}
 
-	// bodyResponse := io.LimitReader(in, imin(header.ContentLength, maxContentLength))
-	// fmt.Println(in)
-	// bodyResponse := io.LimitReader(in, 1e+6)
-	// b, err := ioutil.ReadAll(bodyResponse)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Printf("%+v\n", b)
-	// panic(fmt.Sprintf("%q", dump))
-	// panic(err)
-
-	// fmt.Printf("%+v\n", in)
-	// bodyReader := io.LimitReader(in, 4000)
-
-	// buffer := make([]byte, 50)
-	// n, _ := bodyReader.Read(buffer)
-	// fmt.Println(n, err, buffer[:n])
-	// panic(fmt.Sprintf("%q", dump))
-	// panic(err)
-
-	b, err := parseBody(in)
+	parsedBody, err := parseBody(in, header.ContentLength)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "parsing body")
 	}
 
-	fmt.Printf("%+v\n",b)
-	
-	var body *lspBody
-	err = json.NewDecoder(in).Decode(&body)
-	// fmt.Println(body)
+	body := new(lspBody)
+	err = json.Unmarshal([]byte(parsedBody), &body)
+
 	switch err {
 	case io.EOF:
 		// no more requests are coming
@@ -142,16 +115,9 @@ func parseRequest(in io.Reader) (_ *lspRequest, last bool, err error) {
 	default:
 		return nil, false, errors.Wrap(err, "decoding body")
 	}
+
 	// do something with `req`
-
 	return &lspRequest{Header: header, Body: body}, last, nil
-}
-
-func imin(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 type lspRequest struct {
@@ -170,7 +136,6 @@ func parseHeader(in io.Reader) (*lspHeader, error) {
 
 	for scan.Scan() {
 		header := scan.Text()
-		fmt.Println(header)
 		if header == "" {
 			// last header
 			return &lsp, nil
@@ -206,23 +171,28 @@ func splitOnce(in, sep string) (prefix, suffix string, err error) {
 	return prefix, suffix, nil
 }
 
-func parseBody(in io.Reader) (string, error) {
+func parseBody(in io.Reader, contentLength int64) (string, error) {
 	var body string
-	scan := bufio.NewScanner(in)
-	openedFlag := false
+	scanner := bufio.NewScanner(in)
 
-	for scan.Scan() {
-		currentLine := scan.Text()
-		if currentLine == "" {
-			// last header
-			openedFlag = true
+	split := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		if atEOF || (len(data) == int(contentLength)) {
+			// fmt.Printf("%t\t%d\t%s\n", atEOF, len(data), data)
+			return len(data), data, nil
 		}
-		if openedFlag {
-			body += currentLine
+		return 0, nil, nil
+	}
+	scanner.Split(split)
+	buf := make([]byte, 2)
+	scanner.Buffer(buf, bufio.MaxScanTokenSize)
+	for scanner.Scan() {
+		if len(scanner.Bytes()) == int(contentLength) {
+			body = scanner.Text()
+			break
 		}
 	}
 
-	if err := scan.Err(); err != nil {
+	if err := scanner.Err(); err != nil {
 		return "", errors.Wrap(err, "scanning body entries")
 	}
 
@@ -230,6 +200,8 @@ func parseBody(in io.Reader) (string, error) {
 }
 
 type lspBody struct {
-	Name string
-	// stuff goes here
+	Jsonrpc string      `json:"jsonrpc"`
+	Id      int         `json:"id"`
+	Method  string      `json:"method"`
+	Params  *json.RawMessage `json:"params"`
 }

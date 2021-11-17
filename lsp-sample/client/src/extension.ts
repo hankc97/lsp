@@ -52,3 +52,12 @@ export function activate(context: ExtensionContext) {
     // Push the disposable lc.start() to the context's subscriptions so that the 
     // client can be deactivated on extension deactivation
 }
+
+
+// transport methods for the language server
+// export enum TransportKind {
+// 	stdio,
+// 	ipc,
+// 	pipe,
+// 	socket
+// }
