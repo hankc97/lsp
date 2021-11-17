@@ -2,18 +2,67 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"fmt"
+	"io"
+	"os"
 	"github.com/stretchr/testify/require"
+	"lsp/mock/jsonclientdumps"
+	"lsp/tcpserver/parse"
 )
 
+func TestServeRequest(t *testing.T) {
+	file, err := os.OpenFile("../../../mock/mockwriter/writer.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+	if err != nil {
+        panic(err)
+    }
+    defer file.Close()
+	_, err = file.Write([]byte("writing some data into a file"))
+    if err != nil {
+        panic(err)
+    }
 
+	tests := []struct {
+		name string
+		paramResp io.Writer
+		paramReq parse.LspRequest
+		want error 
+	}{
+		{
+			name: "testing serve request",
+			paramResp: file,
+			paramReq: 
+					parse.LspRequest{
+						Header: &parse.LspHeader {
+							ContentLength: 4793,
+							ContentType: "",
+						},
+						Body: &parse.LspBody{
+							Jsonrpc: "2.0",
+							Id: 0,
+							Method: "initialize",
+							Params: json.RawMessage(jsonclientdumps.JsonRawMessage),
+						},
+					},
+			want: fmt.Errorf("s"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := serveReq(tt.paramResp, &tt.paramReq)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, err)
+		})
+	}
+}
 
 func TestParseRequest(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		want  *lspRequest
+		want  *parse.LspRequest
 	}{
 		{
 			name: "base case",
@@ -424,12 +473,12 @@ func TestParseRequest(t *testing.T) {
 							]
 						}
 					}`,
-			want: &lspRequest{
-				Header: &lspHeader{
+			want: &parse.LspRequest{
+				Header: &parse.LspHeader{
 					ContentLength: 23,
 					ContentType:   "application/vscode-jsonrpc; charset=utf-8",
 				},
-				Body: &lspBody{},
+				Body: &parse.LspBody{},
 			},
 		},
 	}
@@ -451,7 +500,7 @@ func TestUnMarshal(t *testing.T) {
 		{	
 			name: "testUnmarshal",
 			input: string(`{"operation": "get", "key": "example"}`),
-			want: "Jsonrpc: gext",
+			want: "Jsonrpc: get",
 		},
 	}
 	for _, tt := range tests {
@@ -466,7 +515,7 @@ func TestParseHeader(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		want  *lspHeader
+		want  *parse.LspHeader
 	}{
 		{
 			name: "base case",
@@ -474,7 +523,7 @@ func TestParseHeader(t *testing.T) {
 				"Content-Type: json\r\n" +
 				"\r\n" +
 				`{}`,
-			want: &lspHeader{
+			want: &parse.LspHeader{
 				ContentLength: 23,
 				ContentType:   "json",
 			},

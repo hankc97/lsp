@@ -1,7 +1,7 @@
 {
-	"name": "lsp-sample",
-	"description": "A language server example",
-	"author": "Microsoft Corporation",
+	"name": "tcp-client",
+	"description": "A language server",
+	"author": "Hank Chen",
 	"license": "MIT",
 	"version": "1.0.0",
 	"repository": {

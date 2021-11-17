@@ -4,19 +4,25 @@ import (
 	"bufio"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"net"
 	"strconv"
 	"strings"
-
 	"github.com/pkg/errors"
-	// "lsp/tcpserver"
+	"lsp/tcpserver/parse"
+	"lsp/tcpserver"
+	"context"
+	"go.lsp.dev/jsonrpc2"
 )
 
 const (
 	maxContentLength = 1 << 20
+)
+
+const (
+	serverInitialize string = "initialize"
+	serverInitialized string = "initialized"
 )
 
 func main() {
@@ -76,14 +82,37 @@ func handleClientConn(conn io.ReadWriteCloser) error {
 	return nil
 }
 
-func serveReq(resp io.Writer, req *lspRequest) error {
+func serveReq(conn io.Writer, req *parse.LspRequest) error {
 	// write to `resp` according to what `req` contains
-	fmt.Printf("%+v\n", req)
+	ctx := context.Background()
+	body := req.Body
+	var result interface{}
+	var err error
 
+	switch body.Method {
+	case serverInitialize:
+	result, err = tcpserver.Initialize(ctx, body)
+	case serverInitialized:
+	default:
+		errors.New("invalid method type")
+	}
+
+	id := jsonrpc2.NewNumberID(int32(body.Id))
+	response, err := jsonrpc2.NewResponse(id, result, err)
+	if err != nil {
+		return err
+	}
+	
+	marshalledResponse, err := response.MarshalJSON()
+	if err != nil {
+		return err
+	}
+
+	conn.Write(marshalledResponse)
 	return nil
 }
 
-func parseRequest(in io.Reader) (_ *lspRequest, last bool, err error) {
+func parseRequest(in io.Reader) (_ *parse.LspRequest, last bool, err error) {
 	header, err := parseHeader(in)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "parsing header")
@@ -103,7 +132,7 @@ func parseRequest(in io.Reader) (_ *lspRequest, last bool, err error) {
 		return nil, false, errors.Wrap(err, "parsing body")
 	}
 
-	body := new(lspBody)
+	body := new(parse.LspBody)
 	err = json.Unmarshal([]byte(parsedBody), &body)
 
 	switch err {
@@ -117,21 +146,12 @@ func parseRequest(in io.Reader) (_ *lspRequest, last bool, err error) {
 	}
 
 	// do something with `req`
-	return &lspRequest{Header: header, Body: body}, last, nil
+	return &parse.LspRequest{Header: header, Body: body}, last, nil
 }
 
-type lspRequest struct {
-	Header *lspHeader
-	Body   *lspBody
-}
 
-type lspHeader struct {
-	ContentLength int64
-	ContentType   string
-}
-
-func parseHeader(in io.Reader) (*lspHeader, error) {
-	var lsp lspHeader
+func parseHeader(in io.Reader) (*parse.LspHeader, error) {
+	var lsp parse.LspHeader
 	scan := bufio.NewScanner(in)
 
 	for scan.Scan() {
@@ -177,7 +197,6 @@ func parseBody(in io.Reader, contentLength int64) (string, error) {
 
 	split := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if atEOF || (len(data) == int(contentLength)) {
-			// fmt.Printf("%t\t%d\t%s\n", atEOF, len(data), data)
 			return len(data), data, nil
 		}
 		return 0, nil, nil
@@ -199,9 +218,3 @@ func parseBody(in io.Reader, contentLength int64) (string, error) {
 	return body, nil
 }
 
-type lspBody struct {
-	Jsonrpc string      `json:"jsonrpc"`
-	Id      int         `json:"id"`
-	Method  string      `json:"method"`
-	Params  *json.RawMessage `json:"params"`
-}
