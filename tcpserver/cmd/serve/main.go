@@ -13,7 +13,9 @@ import (
 	"lsp/tcpserver/parse"
 	"lsp/tcpserver"
 	"context"
-	"go.lsp.dev/jsonrpc2"
+	"fmt"
+	"kythe.io/kythe/go/languageserver"
+	"kythe.io/kythe/go/services/xrefs"
 )
 
 const (
@@ -58,10 +60,13 @@ func realMain() error {
 	if err != nil {
 		return errors.Wrap(err, "accepting client connection")
 	}
-	return handleClientConn(conn)
+	var xref xrefs.Service
+	options := &languageserver.Options{}
+	server := languageserver.NewServer(xref , options)
+	return handleClientConn(conn, server)
 }
 
-func handleClientConn(conn io.ReadWriteCloser) error {
+func handleClientConn(conn io.ReadWriteCloser, server languageserver.Server) error {
 	defer conn.Close()
 
 	more := true
@@ -70,19 +75,20 @@ func handleClientConn(conn io.ReadWriteCloser) error {
 		if err != nil {
 			return errors.Wrap(err, "parsing request")
 		}
+
 		if last {
 			more = false
 		}
 
 		// handle request and respond
-		if err := serveReq(conn, req); err != nil {
+		if err := serveReq(conn, req, server); err != nil {
 			return errors.Wrap(err, "serving request")
 		}
 	}
 	return nil
 }
 
-func serveReq(conn io.Writer, req *parse.LspRequest) error {
+func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Server) error {
 	// write to `resp` according to what `req` contains
 	ctx := context.Background()
 	body := req.Body
@@ -91,25 +97,58 @@ func serveReq(conn io.Writer, req *parse.LspRequest) error {
 
 	switch body.Method {
 	case serverInitialize:
-	result, err = tcpserver.Initialize(ctx, body)
+	result, err = tcpserver.Initialize(ctx, body, server)
 	case serverInitialized:
 	default:
 		errors.New("invalid method type")
 	}
 
-	id := jsonrpc2.NewNumberID(int32(body.Id))
-	response, err := jsonrpc2.NewResponse(id, result, err)
+	response, err := NewResponse(body.Id, result, err)
 	if err != nil {
 		return err
 	}
 	
-	marshalledResponse, err := response.MarshalJSON()
+	// fmt.Println("jsonrpc: ",response.jsonrpc)
+	// fmt.Println("result: ",string(response.result))
+	// fmt.Println("err: ",response.err)
+	// fmt.Println("id: ",response.id)
+
+	marshalledResponse, err := json.Marshal(&response)
 	if err != nil {
 		return err
 	}
 
 	conn.Write(marshalledResponse)
 	return nil
+}
+
+type Response struct {
+	jsonrpc string
+    // result is the content of the response.
+    result json.RawMessage
+    // err is set only if the call failed.
+    err error
+    // ID of the request this is a response to.
+    id int
+}
+
+func NewResponse(id int, result interface{}, err error) (*Response, error) {
+	r, merr := marshalInterface(result)
+	resp := &Response{
+		jsonrpc: "2.0",
+		result: r,
+		err:    err,
+		id:     id,
+	}
+	return resp, merr
+}
+
+func marshalInterface(obj interface{}) (json.RawMessage, error) {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return json.RawMessage{}, fmt.Errorf("failed to marshal json: %w", err)
+	}
+	return json.RawMessage(data), nil
 }
 
 func parseRequest(in io.Reader) (_ *parse.LspRequest, last bool, err error) {

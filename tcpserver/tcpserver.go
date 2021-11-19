@@ -3,19 +3,24 @@ package tcpserver
 import (
 	"context"
 	"lsp/tcpserver/parse"
-	"go.lsp.dev/protocol"
 	"encoding/json"
 	"github.com/pkg/errors"
-	"fmt"
+	"kythe.io/kythe/go/languageserver"
+	"github.com/sourcegraph/go-langserver/pkg/lsp"
 )
 
-func Initialize(ctx context.Context, body *parse.LspBody) (protocol.InitializeParams, error) {
+func Initialize(ctx context.Context, body *parse.LspBody, server languageserver.Server) (*lsp.InitializeResult, error) {
 	params := body.Params 
-	initializeParamStruct := protocol.InitializeParams{}
+	initializeParamStruct := lsp.InitializeParams{}
 	err := json.Unmarshal(params, &initializeParamStruct)
 	if err != nil {
-		return initializeParamStruct, errors.New("decoding lsp body params")
+		return nil, errors.New("decoding lsp body params")
 	}
-	fmt.Printf("%+v\n", initializeParamStruct)
-	return initializeParamStruct, nil;
+
+	initializeResult, err := server.Initialize(initializeParamStruct)
+	if err != nil {
+		return nil, errors.New("decoding initialized params")
+	}
+
+	return initializeResult, nil;
 }
