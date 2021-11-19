@@ -108,10 +108,10 @@ func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Serve
 		return err
 	}
 	
-	// fmt.Println("jsonrpc: ",response.jsonrpc)
-	// fmt.Println("result: ",string(response.result))
-	// fmt.Println("err: ",response.err)
-	// fmt.Println("id: ",response.id)
+	fmt.Println("jsonrpc: ",response.jsonrpc)
+	fmt.Println("result: ",string(response.result))
+	fmt.Println("err: ",response.err)
+	fmt.Println("id: ",response.id)
 
 	marshalledResponse, err := json.Marshal(&response)
 	if err != nil {
