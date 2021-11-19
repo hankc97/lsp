@@ -11,8 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"lsp/mock/jsonclientdumps"
 	"lsp/tcpserver/parse"
-	"kythe.io/kythe/go/languageserver"
-	"kythe.io/kythe/go/services/xrefs"
 )
 
 func TestServeRequest(t *testing.T) {
@@ -26,15 +24,10 @@ func TestServeRequest(t *testing.T) {
         panic(err)
     }
 
-	var xref xrefs.Service
-	options := &languageserver.Options{}
-	server := languageserver.NewServer(xref , options)
-
 	tests := []struct {
 		name string
 		paramResp io.Writer
 		paramReq parse.LspRequest
-		server languageserver.Server
 		want error 
 	}{
 		{
@@ -53,13 +46,12 @@ func TestServeRequest(t *testing.T) {
 							Params: json.RawMessage(jsonclientdumps.JsonRawMessage),
 						},
 					},
-			server: server,
 			want: fmt.Errorf("s"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := serveReq(tt.paramResp, &tt.paramReq, tt.server)
+			// err := serveReq(tt.paramResp, &tt.paramReq)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, err)
 		})
