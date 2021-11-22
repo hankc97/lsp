@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
 	"github.com/pkg/errors"
 	"kythe.io/kythe/go/languageserver"
 	"kythe.io/kythe/go/services/xrefs"
@@ -28,13 +29,6 @@ const (
 	serverInitialized string = "initialized"
 )
 
-var (
-	Iface   = flag.String("iface", "127.0.0.1", "interface to bind to, defaults to localhost")
-	port    = flag.String("port", "", "port to bind to")
-	c       = flag.String("c", "", "communication mode (stdio|tcp)")
-	logfile = flag.String("logfile", "", "also log to this file (in additional to stderr) under logger/")
-)
-
 func main() {
 	if err := realMain(); err != nil {
 		log.Fatal(err)
@@ -42,10 +36,12 @@ func main() {
 }
 
 func realMain() error {
-
+	iface := flag.String("iface", "127.0.0.1", "interface to bind to, defaults to localhost")
+	port := flag.String("port", "", "port to bind to")
+	logfile := flag.String("logfile", "", "also log to this file (in additional to stderr) under logger/")
 	flag.Parse()
 
-	if Iface == nil || *Iface == "" {
+	if iface == nil || *iface == "" {
 		return errors.New("-iface is required")
 	}
 
@@ -53,11 +49,7 @@ func realMain() error {
 		return errors.New("-port is required")
 	}
 
-	if c == nil || *c == "" {
-		return errors.New("-c is required: stdio|tcp")
-	}
-
-	listener, err := net.Listen("tcp", net.JoinHostPort(*Iface, *port))
+	listener, err := net.Listen("tcp", net.JoinHostPort(*iface, *port))
 	if err != nil {
 		return errors.Wrap(err, "creating listener")
 	}
@@ -81,19 +73,27 @@ func realMain() error {
 
 	log.Printf("listening on %q", addr.String())
 
-	conn, err := listener.Accept()
-	if err != nil {
-		log.Println(err, "accepting client connection")
-		return errors.Wrap(err, "accepting client connection")
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Println(err, "accepting client connection")
+			return errors.Wrap(err, "accepting client connection")
+		}
+		go func() {
+			err := handleClientConn(conn)
+			if err != nil {
+				log.Printf("handling client: %v", err)
+			}
+		}()
 	}
+}
+
+func handleClientConn(conn io.ReadWriteCloser) error {
+	defer conn.Close()
+
 	var xref xrefs.Service
 	options := &languageserver.Options{}
 	server := languageserver.NewServer(xref, options)
-	return handleClientConn(conn, server)
-}
-
-func handleClientConn(conn io.ReadWriteCloser, server languageserver.Server) error {
-	defer conn.Close()
 
 	more := true
 	for more {
@@ -104,7 +104,7 @@ func handleClientConn(conn io.ReadWriteCloser, server languageserver.Server) err
 		// }
 		// writeRequest(conn, req)
 
-		req, last, err := parseRequest(conn)
+		req, last, err := parseRequest(io.TeeReader(conn, os.Stderr))
 		if err != nil {
 			log.Println(err, "parsing request")
 			return errors.Wrap(err, "parsing request")
@@ -123,8 +123,6 @@ func handleClientConn(conn io.ReadWriteCloser, server languageserver.Server) err
 	return nil
 }
 
-
-
 func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Server) error {
 	// write to `resp` according to what `req` contains
 	ctx := context.Background()
@@ -137,25 +135,29 @@ func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Serve
 		result, err = tcpserver.Initialize(ctx, body, server)
 	case serverInitialized:
 	default:
-		log.Println("invalid method type")
-		errors.New("invalid method type")
+		err = errors.Errorf("unsupported method: %q", body.Method)
+	}
+	if err != nil {
+		return errors.Wrap(err, "handling method")
 	}
 
 	response, err := NewResponse(body.Id, result, err)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "preparing response")
 	}
 
 	marshalledResponse, err := json.Marshal(&response)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "marshaling response")
 	}
 
 	log.Print("\n")
 	log.Println("sending...", string(marshalledResponse))
 	log.Println("sending...", marshalledResponse)
 
-	conn.Write(marshalledResponse)
+	if _, err := conn.Write(marshalledResponse); err != nil {
+		return errors.Wrap(err, "writing response to connection")
+	}
 	return nil
 }
 
@@ -309,8 +311,6 @@ func parseBody(in io.Reader, contentLength int64) (string, error) {
 
 	return body, nil
 }
-
-
 
 // testing on netcat for stdin / stdio
 func readRequest(reader io.Reader) (string, error) {
