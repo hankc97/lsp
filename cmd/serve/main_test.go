@@ -10,7 +10,8 @@ import (
 	"os"
 	"github.com/stretchr/testify/require"
 	"lsp/mock/jsonclientdumps"
-	"lsp/tcpserver/parse"
+	"lsp/server/parse"
+	
 )
 
 func TestServeRequest(t *testing.T) {

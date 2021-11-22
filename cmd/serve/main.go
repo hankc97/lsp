@@ -2,18 +2,20 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log"
+	tcpserver "lsp/server"
+	"lsp/server/parse"
 	"net"
+	"os"
 	"strconv"
 	"strings"
+
 	"github.com/pkg/errors"
-	"lsp/tcpserver/parse"
-	"lsp/tcpserver"
-	"context"
-	"fmt"
 	"kythe.io/kythe/go/languageserver"
 	"kythe.io/kythe/go/services/xrefs"
 )
@@ -23,7 +25,7 @@ const (
 )
 
 const (
-	serverInitialize string = "initialize"
+	serverInitialize  string = "initialize"
 	serverInitialized string = "initialized"
 )
 
@@ -35,7 +37,8 @@ func main() {
 
 func realMain() error {
 	iface := flag.String("iface", "127.0.0.1", "interface to bind to, defaults to localhost")
-	port := flag.String("port", "5007", "port to bind to")
+	port := flag.String("port", "", "port to bind to")
+	logfile := flag.String("logfile", "", "also log to this file (in additional to stderr) under logger/")
 	flag.Parse()
 
 	if iface == nil || *iface == "" {
@@ -52,27 +55,58 @@ func realMain() error {
 	}
 	defer listener.Close()
 
+	var logWriter io.Writer
+	if *logfile == "" {
+		logWriter = os.Stderr
+	} else {
+		logDir := fmt.Sprint("logger/", *logfile)
+		file, err := os.Create(logDir)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		logWriter = io.MultiWriter(os.Stderr, file)
+	}
+	log.SetOutput(logWriter)
+
 	addr := listener.Addr().(*net.TCPAddr)
 
 	log.Printf("listening on %q", addr.String())
 
-	conn, err := listener.Accept()
-	if err != nil {
-		return errors.Wrap(err, "accepting client connection")
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Println(err, "accepting client connection")
+			return errors.Wrap(err, "accepting client connection")
+		}
+		go func() {
+			err := handleClientConn(conn)
+			if err != nil {
+				log.Printf("handling client: %v", err)
+			}
+		}()
 	}
-	var xref xrefs.Service
-	options := &languageserver.Options{}
-	server := languageserver.NewServer(xref , options)
-	return handleClientConn(conn, server)
 }
 
-func handleClientConn(conn io.ReadWriteCloser, server languageserver.Server) error {
+func handleClientConn(conn io.ReadWriteCloser) error {
 	defer conn.Close()
+
+	var xref xrefs.Service
+	options := &languageserver.Options{}
+	server := languageserver.NewServer(xref, options)
 
 	more := true
 	for more {
-		req, last, err := parseRequest(conn)
+
+		// req, err := readRequest(conn)
+		// if err != nil {
+		// 	return err
+		// }
+		// writeRequest(conn, req)
+
+		req, last, err := parseRequest(io.TeeReader(conn, os.Stderr))
 		if err != nil {
+			log.Println(err, "parsing request")
 			return errors.Wrap(err, "parsing request")
 		}
 
@@ -82,6 +116,7 @@ func handleClientConn(conn io.ReadWriteCloser, server languageserver.Server) err
 
 		// handle request and respond
 		if err := serveReq(conn, req, server); err != nil {
+			log.Println(err, "serving request")
 			return errors.Wrap(err, "serving request")
 		}
 	}
@@ -97,48 +132,52 @@ func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Serve
 
 	switch body.Method {
 	case serverInitialize:
-	result, err = tcpserver.Initialize(ctx, body, server)
+		result, err = tcpserver.Initialize(ctx, body, server)
 	case serverInitialized:
 	default:
-		errors.New("invalid method type")
+		err = errors.Errorf("unsupported method: %q", body.Method)
+	}
+	if err != nil {
+		return errors.Wrap(err, "handling method")
 	}
 
 	response, err := NewResponse(body.Id, result, err)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "preparing response")
 	}
-	
-	// fmt.Println("jsonrpc: ",response.jsonrpc)
-	// fmt.Println("result: ",string(response.result))
-	// fmt.Println("err: ",response.err)
-	// fmt.Println("id: ",response.id)
 
 	marshalledResponse, err := json.Marshal(&response)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "marshaling response")
 	}
 
-	conn.Write(marshalledResponse)
+	log.Print("\n")
+	log.Println("sending...", string(marshalledResponse))
+	log.Println("sending...", marshalledResponse)
+
+	if _, err := conn.Write(marshalledResponse); err != nil {
+		return errors.Wrap(err, "writing response to connection")
+	}
 	return nil
 }
 
 type Response struct {
-	jsonrpc string
-    // result is the content of the response.
-    result json.RawMessage
-    // err is set only if the call failed.
-    err error
-    // ID of the request this is a response to.
-    id int
+	Jsonrpc string `json:"jsonrpc"`
+	// result is the content of the response.
+	Result json.RawMessage `json:"result"`
+	// err is set only if the call failed.
+	Error error `json:"error"`
+	// ID of the request this is a response to.
+	Id int `json:"id"`
 }
 
 func NewResponse(id int, result interface{}, err error) (*Response, error) {
 	r, merr := marshalInterface(result)
 	resp := &Response{
-		jsonrpc: "2.0",
-		result: r,
-		err:    err,
-		id:     id,
+		Jsonrpc: "2.0",
+		Result:  r,
+		Error:   err,
+		Id:      id,
 	}
 	return resp, merr
 }
@@ -146,6 +185,7 @@ func NewResponse(id int, result interface{}, err error) (*Response, error) {
 func marshalInterface(obj interface{}) (json.RawMessage, error) {
 	data, err := json.Marshal(obj)
 	if err != nil {
+		log.Println("failed to marshal json: %w", err)
 		return json.RawMessage{}, fmt.Errorf("failed to marshal json: %w", err)
 	}
 	return json.RawMessage(data), nil
@@ -154,6 +194,7 @@ func marshalInterface(obj interface{}) (json.RawMessage, error) {
 func parseRequest(in io.Reader) (_ *parse.LspRequest, last bool, err error) {
 	header, err := parseHeader(in)
 	if err != nil {
+		log.Println(err, "parsing header")
 		return nil, false, errors.Wrap(err, "parsing header")
 	}
 
@@ -168,6 +209,7 @@ func parseRequest(in io.Reader) (_ *parse.LspRequest, last bool, err error) {
 
 	parsedBody, err := parseBody(in, header.ContentLength)
 	if err != nil {
+		log.Println(err, "parsing body")
 		return nil, false, errors.Wrap(err, "parsing body")
 	}
 
@@ -181,6 +223,7 @@ func parseRequest(in io.Reader) (_ *parse.LspRequest, last bool, err error) {
 	case nil:
 		// no problem
 	default:
+		log.Println(err, "decoding body")
 		return nil, false, errors.Wrap(err, "decoding body")
 	}
 
@@ -188,25 +231,29 @@ func parseRequest(in io.Reader) (_ *parse.LspRequest, last bool, err error) {
 	return &parse.LspRequest{Header: header, Body: body}, last, nil
 }
 
-
 func parseHeader(in io.Reader) (*parse.LspHeader, error) {
 	var lsp parse.LspHeader
 	scan := bufio.NewScanner(in)
+	fmt.Println("received header... ")
 
 	for scan.Scan() {
 		header := scan.Text()
+		log.Println(header)
+
 		if header == "" {
 			// last header
 			return &lsp, nil
 		}
 		name, value, err := splitOnce(header, ": ")
 		if err != nil {
+			log.Println(err, "parsing an header entry")
 			return nil, errors.Wrap(err, "parsing an header entry")
 		}
 		switch name {
 		case "Content-Length":
 			v, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
+				log.Println(err, "invalid Content-Length: %q", value)
 				return nil, errors.Wrapf(err, "invalid Content-Length: %q", value)
 			}
 			lsp.ContentLength = v
@@ -215,14 +262,17 @@ func parseHeader(in io.Reader) (*parse.LspHeader, error) {
 		}
 	}
 	if err := scan.Err(); err != nil {
+		log.Println(err, "scanning header entries")
 		return nil, errors.Wrap(err, "scanning header entries")
 	}
+	log.Println("no body contained")
 	return nil, errors.New("no body contained")
 }
 
 func splitOnce(in, sep string) (prefix, suffix string, err error) {
 	sepIdx := strings.Index(in, sep)
 	if sepIdx < 0 {
+		log.Printf("separator %q not found", sep)
 		return "", "", errors.Errorf("separator %q not found", sep)
 	}
 	prefix = in[:sepIdx]
@@ -251,9 +301,46 @@ func parseBody(in io.Reader, contentLength int64) (string, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
+		log.Println(err, "scanning body entries")
 		return "", errors.Wrap(err, "scanning body entries")
 	}
+
+	log.Println("received body... ")
+	log.Println(body)
+	log.Print("\n")
 
 	return body, nil
 }
 
+// testing on netcat for stdin / stdio
+func readRequest(reader io.Reader) (string, error) {
+	scan := bufio.NewScanner(reader)
+	var req string
+
+	for scan.Scan() {
+		headerContext := scan.Text()
+		fmt.Printf("%+v\n", headerContext)
+
+		if headerContext == "Content-Length: 5000" {
+			req = headerContext
+		}
+
+		if headerContext == "" {
+			return req, nil
+		}
+	}
+
+	return "nothing exists", nil
+}
+
+func writeRequest(writer io.Writer, req string) error {
+	fmt.Println(req, "written back to client")
+
+	marshalledreq, err := json.Marshal(&req)
+	if err != nil {
+		return err
+	}
+	writer.Write(marshalledreq)
+
+	return nil
+}
