@@ -1,0 +1,98 @@
+# bitbucket.org/creachadair/stringset v0.0.9
+## explicit; go 1.12
+bitbucket.org/creachadair/stringset
+# github.com/davecgh/go-spew v1.1.1
+## explicit
+github.com/davecgh/go-spew/spew
+# github.com/golang/protobuf v1.5.2
+## explicit; go 1.9
+github.com/golang/protobuf/proto
+github.com/golang/protobuf/ptypes
+github.com/golang/protobuf/ptypes/any
+github.com/golang/protobuf/ptypes/duration
+github.com/golang/protobuf/ptypes/timestamp
+# github.com/pkg/errors v0.9.1
+## explicit
+github.com/pkg/errors
+# github.com/pmezard/go-difflib v1.0.0
+## explicit
+github.com/pmezard/go-difflib/difflib
+# github.com/sergi/go-diff v1.2.0
+## explicit; go 1.12
+github.com/sergi/go-diff/diffmatchpatch
+# github.com/sourcegraph/go-langserver v2.0.0+incompatible
+## explicit
+github.com/sourcegraph/go-langserver/pkg/lsp
+# github.com/sourcegraph/go-lsp v0.0.0-20200429204803-219e11d77f5d
+## explicit; go 1.14
+github.com/sourcegraph/go-lsp
+# github.com/sourcegraph/jsonrpc2 v0.1.0
+## explicit; go 1.12
+github.com/sourcegraph/jsonrpc2
+# github.com/stretchr/testify v1.7.0
+## explicit; go 1.13
+github.com/stretchr/testify/assert
+github.com/stretchr/testify/require
+# golang.org/x/sys v0.0.0-20210927094055-39ccf1dd6fa6
+## explicit; go 1.17
+# google.golang.org/genproto v0.0.0-20210803142424-70bd63adacf2
+## explicit; go 1.11
+google.golang.org/genproto/googleapis/rpc/status
+# google.golang.org/grpc v1.39.0
+## explicit; go 1.11
+google.golang.org/grpc/codes
+google.golang.org/grpc/internal/status
+google.golang.org/grpc/status
+# google.golang.org/protobuf v1.27.1
+## explicit; go 1.9
+google.golang.org/protobuf/encoding/protojson
+google.golang.org/protobuf/encoding/prototext
+google.golang.org/protobuf/encoding/protowire
+google.golang.org/protobuf/internal/descfmt
+google.golang.org/protobuf/internal/descopts
+google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/encoding/defval
+google.golang.org/protobuf/internal/encoding/json
+google.golang.org/protobuf/internal/encoding/messageset
+google.golang.org/protobuf/internal/encoding/tag
+google.golang.org/protobuf/internal/encoding/text
+google.golang.org/protobuf/internal/errors
+google.golang.org/protobuf/internal/filedesc
+google.golang.org/protobuf/internal/filetype
+google.golang.org/protobuf/internal/flags
+google.golang.org/protobuf/internal/genid
+google.golang.org/protobuf/internal/impl
+google.golang.org/protobuf/internal/order
+google.golang.org/protobuf/internal/pragma
+google.golang.org/protobuf/internal/set
+google.golang.org/protobuf/internal/strs
+google.golang.org/protobuf/internal/version
+google.golang.org/protobuf/proto
+google.golang.org/protobuf/reflect/protodesc
+google.golang.org/protobuf/reflect/protoreflect
+google.golang.org/protobuf/reflect/protoregistry
+google.golang.org/protobuf/runtime/protoiface
+google.golang.org/protobuf/runtime/protoimpl
+google.golang.org/protobuf/types/descriptorpb
+google.golang.org/protobuf/types/known/anypb
+google.golang.org/protobuf/types/known/durationpb
+google.golang.org/protobuf/types/known/timestamppb
+# gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+## explicit
+gopkg.in/yaml.v3
+# kythe.io v0.0.55
+## explicit; go 1.13
+kythe.io/kythe/go/languageserver
+kythe.io/kythe/go/languageserver/pathmap
+kythe.io/kythe/go/services/web
+kythe.io/kythe/go/services/xrefs
+kythe.io/kythe/go/util/httpencoding
+kythe.io/kythe/go/util/kytheuri
+kythe.io/kythe/go/util/markedsource
+kythe.io/kythe/go/util/schema
+kythe.io/kythe/go/util/schema/edges
+kythe.io/kythe/go/util/schema/facts
+kythe.io/kythe/proto/common_go_proto
+kythe.io/kythe/proto/schema_go_proto
+kythe.io/kythe/proto/storage_go_proto
+kythe.io/kythe/proto/xref_go_proto

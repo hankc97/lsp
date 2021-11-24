@@ -1,0 +1,7 @@
+{
+  "capabilities": {
+    "textDocumentSync": 2,
+    "completionProvider": { "resolveProvider": true },
+    "workspace": { "workspaceFolders": { "supported": true } }
+  }
+}

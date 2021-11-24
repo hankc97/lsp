@@ -2,7 +2,6 @@ package tcpserver
 
 import (
 	"log"
-	"context"
 	"lsp/server/parse"
 	"encoding/json"
 	"github.com/pkg/errors"
@@ -10,7 +9,7 @@ import (
 	"kythe.io/kythe/go/languageserver"
 )
 
-func Initialize(ctx context.Context, body *parse.LspBody, server languageserver.Server) (*lsp.InitializeResult, error) {
+func Initialize(body *parse.LspBody, server languageserver.Server) (*lsp.InitializeResult, error) {
 	params := body.Params 
 	initializeParamStruct := lsp.InitializeParams{}
 	err := json.Unmarshal(params, &initializeParamStruct)
