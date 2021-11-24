@@ -16,7 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"kythe.io/kythe/go/languageserver"
 	"kythe.io/kythe/go/services/xrefs"
-	"time"
+	"encoding/hex"
 )
 
 const (
@@ -158,12 +158,11 @@ func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Serve
 		},
 	}
 
-
 	marshalledBodyRequest, err := json.Marshal(&requestBody)
 	if err != nil {
 		return errors.Wrap(err, "marshaling response body")
 	}
-	contentLengthRespBody := int(len(marshalledBodyRequest))
+	// contentLengthRespBody := int(len(marshalledBodyRequest))
 
 	// requestMid := "\r\n"
 	// marshalledMidRequest, err := json.Marshal(&requestMid)
@@ -171,27 +170,44 @@ func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Serve
 	// 	return errors.Wrap(err, "marshaling response header")
 	// }
 
-	requestHeader := fmt.Sprint("Content-Length: ", contentLengthRespBody, "\r\n", "\r\n")
-	marshalledHeaderRequest, err := json.Marshal(&requestHeader)
+	// requestHeader := fmt.Sprint("Content-Length: ", contentLengthRespBody, "%0D%0A")
+	// str := ``
+	// buf := bytes.NewBufferString(str).Bytes()
+
+	// fmt.Println(buf)
+	
+	// CR LF -> %0D%0A to seperate header and body
+	s := fmt.Sprintf("%x", "Content-Length: 171\r\n\r\n")
+	// returns binary value of "string" + %0D%0A
+	b, err := hex.DecodeString(s) 
+
+
+	// buf := append(buf)
+	
+	marshalledHeaderRequest, err := json.Marshal(&requestBody)
+	marshalledHeaderRequest = json.RawMessage(marshalledHeaderRequest)
+	// fmt.Println(marshalledHeaderRequest)
+
 	if err != nil {
 		return errors.Wrap(err, "marshaling response header")
 	}
 
-	// marshalledConcatReq := append(marshalledHeaderRequest, marshalledBodyRequest...)
-	
 	log.Print("\n")
-	log.Println("stringified", string(marshalledHeaderRequest))
-	if _, err := conn.Write(marshalledHeaderRequest); err != nil {
+	// log.Println("stringified", string(marshalledHeaderRequest))
+
+	// fmt.Println(buf)
+	// fmt.Println(buf.Bytes())
+	if _, err := conn.Write(b); err != nil {
 		return errors.Wrap(err, "writing response to connection")
 	}
-	time.Sleep(4 * time.Second)
+	// time.Sleep(4 * time.Second)
 
 	log.Print("\n")
 	log.Println("stringified", string(marshalledBodyRequest))
 	if _, err := conn.Write(marshalledBodyRequest); err != nil {
 		return errors.Wrap(err, "writing response to connection")
 	}
-	time.Sleep(4 * time.Second)
+	// time.Sleep(4 * time.Second)
 
 
 	return nil
