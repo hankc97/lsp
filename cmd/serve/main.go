@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -14,10 +13,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
 	"github.com/pkg/errors"
 	"kythe.io/kythe/go/languageserver"
 	"kythe.io/kythe/go/services/xrefs"
+	"time"
 )
 
 const (
@@ -91,20 +90,15 @@ func realMain() error {
 func handleClientConn(conn io.ReadWriteCloser) error {
 	defer conn.Close()
 
+	fmt.Print("\n")
 	var xref xrefs.Service
 	options := &languageserver.Options{}
 	server := languageserver.NewServer(xref, options)
 
 	more := true
 	for more {
-
-		// req, err := readRequest(conn)
-		// if err != nil {
-		// 	return err
-		// }
-		// writeRequest(conn, req)
-
-		req, last, err := parseRequest(io.TeeReader(conn, os.Stderr))
+		req, last, err := parseRequest(conn)
+		// req, last, err := parseRequest(io.TeeReader(conn, os.Stderr))
 		if err != nil {
 			log.Println(err, "parsing request")
 			return errors.Wrap(err, "parsing request")
@@ -125,14 +119,13 @@ func handleClientConn(conn io.ReadWriteCloser) error {
 
 func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Server) error {
 	// write to `resp` according to what `req` contains
-	ctx := context.Background()
 	body := req.Body
 	var result interface{}
 	var err error
 
 	switch body.Method {
 	case serverInitialize:
-		result, err = tcpserver.Initialize(ctx, body, server)
+		result, err = tcpserver.Initialize(body, server)
 	case serverInitialized:
 	default:
 		err = errors.Errorf("unsupported method: %q", body.Method)
@@ -143,22 +136,93 @@ func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Serve
 
 	response, err := NewResponse(body.Id, result, err)
 	if err != nil {
+		fmt.Println(response, "ERROR!!!!")
 		return errors.Wrap(err, "preparing response")
 	}
 
-	marshalledResponse, err := json.Marshal(&response)
-	if err != nil {
-		return errors.Wrap(err, "marshaling response")
+	requestBody := Resp {
+		Jsonrpc: "2.0",
+		Id: 0,
+		Result: ResultValue {
+			Capabilities: CapabilitiesValue{
+				TextDocumentSync: 2,
+				CompletionProvider: ResolveProviderValue{
+					ResolveProvider: true,
+				},
+				Workspace: WorkspaceValue{
+					WorkspaceFolders: WorkspaceFoldersValue{
+						Supported: true,
+					},
+				},
+			},
+		},
 	}
 
-	log.Print("\n")
-	log.Println("sending...", string(marshalledResponse))
-	log.Println("sending...", marshalledResponse)
 
-	if _, err := conn.Write(marshalledResponse); err != nil {
+	marshalledBodyRequest, err := json.Marshal(&requestBody)
+	if err != nil {
+		return errors.Wrap(err, "marshaling response body")
+	}
+	contentLengthRespBody := int(len(marshalledBodyRequest))
+
+	// requestMid := "\r\n"
+	// marshalledMidRequest, err := json.Marshal(&requestMid)
+	// if err != nil {
+	// 	return errors.Wrap(err, "marshaling response header")
+	// }
+
+	requestHeader := fmt.Sprint("Content-Length: ", contentLengthRespBody, "\r\n", "\r\n")
+	marshalledHeaderRequest, err := json.Marshal(&requestHeader)
+	if err != nil {
+		return errors.Wrap(err, "marshaling response header")
+	}
+
+	// marshalledConcatReq := append(marshalledHeaderRequest, marshalledBodyRequest...)
+	
+	log.Print("\n")
+	log.Println("stringified", string(marshalledHeaderRequest))
+	if _, err := conn.Write(marshalledHeaderRequest); err != nil {
 		return errors.Wrap(err, "writing response to connection")
 	}
+	time.Sleep(4 * time.Second)
+
+	log.Print("\n")
+	log.Println("stringified", string(marshalledBodyRequest))
+	if _, err := conn.Write(marshalledBodyRequest); err != nil {
+		return errors.Wrap(err, "writing response to connection")
+	}
+	time.Sleep(4 * time.Second)
+
+
 	return nil
+}
+
+type Resp struct {
+	Jsonrpc string      `json:"jsonrpc"`
+	Id      int         `json:"id"`
+	Result  ResultValue `json:"result"`
+}
+
+type ResultValue struct {
+	Capabilities CapabilitiesValue `json:"capabilities"`
+}
+
+type CapabilitiesValue struct {
+	TextDocumentSync   int                  `json:"textDocumentSync"`
+	CompletionProvider ResolveProviderValue `json:"completionProvider"`
+	Workspace          WorkspaceValue       `json:"workspace"`
+}
+
+type ResolveProviderValue struct {
+	ResolveProvider bool `json:"resolveProvider"`
+}
+
+type WorkspaceValue struct {
+	WorkspaceFolders WorkspaceFoldersValue `json:"workspaceFolders"`
+}
+
+type WorkspaceFoldersValue struct {
+	Supported bool `json:"supported"`
 }
 
 type Response struct {
@@ -238,8 +302,7 @@ func parseHeader(in io.Reader) (*parse.LspHeader, error) {
 
 	for scan.Scan() {
 		header := scan.Text()
-		log.Println(header)
-
+		fmt.Println(header)
 		if header == "" {
 			// last header
 			return &lsp, nil
@@ -305,42 +368,7 @@ func parseBody(in io.Reader, contentLength int64) (string, error) {
 		return "", errors.Wrap(err, "scanning body entries")
 	}
 
-	log.Println("received body... ")
-	log.Println(body)
-	log.Print("\n")
+	fmt.Println("body is printed here")
 
 	return body, nil
-}
-
-// testing on netcat for stdin / stdio
-func readRequest(reader io.Reader) (string, error) {
-	scan := bufio.NewScanner(reader)
-	var req string
-
-	for scan.Scan() {
-		headerContext := scan.Text()
-		fmt.Printf("%+v\n", headerContext)
-
-		if headerContext == "Content-Length: 5000" {
-			req = headerContext
-		}
-
-		if headerContext == "" {
-			return req, nil
-		}
-	}
-
-	return "nothing exists", nil
-}
-
-func writeRequest(writer io.Writer, req string) error {
-	fmt.Println(req, "written back to client")
-
-	marshalledreq, err := json.Marshal(&req)
-	if err != nil {
-		return err
-	}
-	writer.Write(marshalledreq)
-
-	return nil
 }
