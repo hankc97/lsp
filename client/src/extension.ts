@@ -10,8 +10,6 @@ import {
 	LanguageClient,
 	LanguageClientOptions,
 	ServerOptions,
-	TransportKind,
-    StreamInfo,
 } from 'vscode-languageclient';
 
 let client: LanguageClient;
@@ -20,27 +18,6 @@ export function activate(context: ExtensionContext) {
     console.log("configuring workspace...");
     context.subscriptions.push(startLanguageServerTCP(5007, ["plaintext"]));
 }
-
-
-function startLanguageServer(command: string, args: string[], documentSelector: string[]): Disposable {
-    const serverOptions: ServerOptions = {
-        command, 
-        args,
-    };
-
-    const clientOptions: LanguageClientOptions = {
-        documentSelector: documentSelector,
-        synchronize: {
-            configurationSection: "plaintext"
-        },
-    }
-
-    return new LanguageClient(
-        command, 
-        serverOptions,
-        clientOptions
-    ).start()
-} 
 
 function startLanguageServerTCP(address: number, documentSelector: string[]): Disposable {
     const serverOptions: ServerOptions = () => {
