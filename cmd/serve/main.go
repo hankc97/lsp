@@ -14,16 +14,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
 	"github.com/pkg/errors"
-
 	// "github.com/sourcegraph/go-langserver/pkg/lsp"
 	"kythe.io/kythe/go/languageserver"
 	"kythe.io/kythe/go/services/xrefs"
 )
 
 const (
-	maxContentLength = 1 << 20
+	// maxContentLength = 1 << 20
 )
 
 const (
@@ -58,18 +56,17 @@ func realMain() error {
 
 	addr := listener.Addr().(*net.TCPAddr)
 
-	log.Printf("listening on %q", addr.String())
+	fmt.Printf("listening on %q", addr.String())
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Println(err, "accepting client connection")
 			return errors.Wrap(err, "accepting client connection")
 		}
 		go func() {
 			err := handleClientConn(conn)
 			if err != nil {
-				log.Printf("handling client: %v", err)
+				fmt.Printf("handling client: %v", err)
 			}
 		}()
 	}
@@ -87,7 +84,6 @@ func handleClientConn(conn io.ReadWriteCloser) error {
 	for more {
 		req, last, err := parseRequest(io.TeeReader(conn, os.Stderr))
 		if err != nil {
-			log.Println(err, "parsing request")
 			return errors.Wrap(err, "parsing request")
 		}
 
@@ -97,7 +93,6 @@ func handleClientConn(conn io.ReadWriteCloser) error {
 
 		// handle request and respond
 		if err := serveReq(conn, req, server); err != nil {
-			log.Println(err, "serving request")
 			return errors.Wrap(err, "serving request")
 		}
 	}
@@ -120,7 +115,7 @@ func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Serve
 		return errors.Wrap(err, "handling method")
 	}
 
-	response, err := NewResponse(body.Id, result, err)
+	response, err := NewResponse(body.Id, result)
 	if err != nil {
 		return errors.Wrap(err, "preparing response")
 	}
@@ -129,23 +124,20 @@ func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Serve
 	if err != nil {
 		return errors.Wrap(err, "marshaling response body")
 	}
-	// contentLengthRespBody := int(len(marshalledBodyRequest))
 
-	// CR LF -> %0D%0A to seperate header and body
-	s := fmt.Sprintf("%x", "Content-Length: 171\r\n\r\n")
-	// returns binary value of "string" + %0D%0A
-	b, err := hex.DecodeString(s)
+	responseHeader, err := NewHeader(marshalledBodyRequest)
+	if err != nil {
+		return errors.Wrap(err, "encoding marshalled header")
+	}
+
 	if err != nil {
 		return errors.Wrap(err, "decoding string to hex to binary")
 	}
 
-	log.Print("\n")
-	if _, err := conn.Write(b); err != nil {
+	if _, err := conn.Write(*responseHeader); err != nil {
 		return errors.Wrap(err, "writing response to connection")
 	}
 
-	log.Print("\n")
-	log.Println("stringified", string(marshalledBodyRequest))
 	if _, err := conn.Write(marshalledBodyRequest); err != nil {
 		return errors.Wrap(err, "writing response to connection")
 	}
@@ -153,7 +145,21 @@ func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Serve
 	return nil
 }
 
-func NewResponse(id int, result interface{}, err error) (*Response, error) {
+func NewHeader(marshalledBody []byte) (*[]byte, error) {
+	contentLengthRespBody := fmt.Sprint(len(marshalledBody))
+	// CR LF -> %0D%0A to seperate header and body
+	var stringifiedHeader string
+	stringifiedHeader = fmt.Sprintf("Content-Length: %s\r\n\r\n", contentLengthRespBody)
+	stringifiedHeader = fmt.Sprintf("%x", stringifiedHeader)
+	responseHeader, err := hex.DecodeString(stringifiedHeader)
+	if err != nil {
+		return nil, err
+	}
+
+	return &responseHeader, nil
+}
+
+func NewResponse(id int, result interface{}) (*Response, error) {
 	r, err := marshalInterface(result)
 	response := &Response{
 		Jsonrpc: "2.0",
@@ -180,7 +186,6 @@ func marshalInterface(obj interface{}) (json.RawMessage, error) {
 func parseRequest(in io.Reader) (_ *parse.LspRequest, last bool, err error) {
 	header, err := parseHeader(in)
 	if err != nil {
-		log.Println(err, "parsing header")
 		return nil, false, errors.Wrap(err, "parsing header")
 	}
 
@@ -195,7 +200,6 @@ func parseRequest(in io.Reader) (_ *parse.LspRequest, last bool, err error) {
 
 	parsedBody, err := parseBody(in, header.ContentLength)
 	if err != nil {
-		log.Println(err, "parsing body")
 		return nil, false, errors.Wrap(err, "parsing body")
 	}
 
@@ -209,7 +213,6 @@ func parseRequest(in io.Reader) (_ *parse.LspRequest, last bool, err error) {
 	case nil:
 		// no problem
 	default:
-		log.Println(err, "decoding body")
 		return nil, false, errors.Wrap(err, "decoding body")
 	}
 
@@ -220,7 +223,6 @@ func parseRequest(in io.Reader) (_ *parse.LspRequest, last bool, err error) {
 func parseHeader(in io.Reader) (*parse.LspHeader, error) {
 	var lsp parse.LspHeader
 	scan := bufio.NewScanner(in)
-	fmt.Println("received header... ")
 
 	for scan.Scan() {
 		header := scan.Text()
@@ -231,14 +233,12 @@ func parseHeader(in io.Reader) (*parse.LspHeader, error) {
 		}
 		name, value, err := splitOnce(header, ": ")
 		if err != nil {
-			log.Println(err, "parsing an header entry")
 			return nil, errors.Wrap(err, "parsing an header entry")
 		}
 		switch name {
 		case "Content-Length":
 			v, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
-				log.Println(err, "invalid Content-Length: %q", value)
 				return nil, errors.Wrapf(err, "invalid Content-Length: %q", value)
 			}
 			lsp.ContentLength = v
@@ -247,17 +247,14 @@ func parseHeader(in io.Reader) (*parse.LspHeader, error) {
 		}
 	}
 	if err := scan.Err(); err != nil {
-		log.Println(err, "scanning header entries")
 		return nil, errors.Wrap(err, "scanning header entries")
 	}
-	log.Println("no body contained")
 	return nil, errors.New("no body contained")
 }
 
 func splitOnce(in, sep string) (prefix, suffix string, err error) {
 	sepIdx := strings.Index(in, sep)
 	if sepIdx < 0 {
-		log.Printf("separator %q not found", sep)
 		return "", "", errors.Errorf("separator %q not found", sep)
 	}
 	prefix = in[:sepIdx]
@@ -286,7 +283,6 @@ func parseBody(in io.Reader, contentLength int64) (string, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Println(err, "scanning body entries")
 		return "", errors.Wrap(err, "scanning body entries")
 	}
 
