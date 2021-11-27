@@ -130,10 +130,6 @@ func serveReq(conn io.Writer, req *parse.LspRequest, server languageserver.Serve
 		return errors.Wrap(err, "encoding marshalled header")
 	}
 
-	if err != nil {
-		return errors.Wrap(err, "decoding string to hex to binary")
-	}
-
 	if _, err := conn.Write(*responseHeader); err != nil {
 		return errors.Wrap(err, "writing response to connection")
 	}

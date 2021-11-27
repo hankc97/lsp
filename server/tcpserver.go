@@ -1,16 +1,18 @@
 package tcpserver
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"lsp/server/parse"
-	"encoding/json"
+
 	"github.com/pkg/errors"
 	"github.com/sourcegraph/go-langserver/pkg/lsp"
 	"kythe.io/kythe/go/languageserver"
 )
 
 func Initialize(body *parse.LspBody, server languageserver.Server) (*ResultValue, error) {
-	params := body.Params 
+	params := body.Params
 	initializeParamStruct := lsp.InitializeParams{}
 	err := json.Unmarshal(params, &initializeParamStruct)
 	if err != nil {
@@ -18,15 +20,18 @@ func Initialize(body *parse.LspBody, server languageserver.Server) (*ResultValue
 		return nil, errors.New("decoding lsp body params")
 	}
 
-	// initializeResult, err := server.Initialize(initializeParamStruct)
+	initializeResult, err := server.Initialize(initializeParamStruct)
 	if err != nil {
 		log.Println("decoding initialized params")
 		return nil, errors.New("decoding initialized params")
 	}
 
-	result := ResultValue {
-		Capabilities: CapabilitiesValue {
-			TextDocumentSync: 2,
+	// fmt.Printf("%+v\n", initializeResult)
+	fmt.Printf("%+v\n", initializeResult.Capabilities)
+
+	result := ResultValue{
+		Capabilities: CapabilitiesValue{
+			TextDocumentSync: 1,
 			CompletionProvider: ResolveProviderValue{
 				ResolveProvider: true,
 			},
@@ -38,7 +43,7 @@ func Initialize(body *parse.LspBody, server languageserver.Server) (*ResultValue
 		},
 	}
 
-	return &result, nil;
+	return &result, nil
 }
 
 type ResultValue struct {
@@ -49,6 +54,10 @@ type CapabilitiesValue struct {
 	TextDocumentSync   int                  `json:"textDocumentSync"`
 	CompletionProvider ResolveProviderValue `json:"completionProvider"`
 	Workspace          WorkspaceValue       `json:"workspace"`
+}
+
+type TextDocumentSyncValue struct {
+	Kind int `json:"kind"`
 }
 
 type ResolveProviderValue struct {
@@ -62,8 +71,6 @@ type WorkspaceValue struct {
 type WorkspaceFoldersValue struct {
 	Supported bool `json:"supported"`
 }
-
-
 
 // requestBody := Resp{
 // 	Jsonrpc: "2.0",
